@@ -100,6 +100,7 @@ let rec get_reader_name
       )
   | Float (_, Float, Float _) -> decoder_ident "float"
   | String (_, String, String) -> decoder_ident "string"
+  | Abstract (_, Abstract, Abstract) -> "Atdgen_runtime.json_of_jsont"
   | Tvar (_, s) -> "read_" ^ Ox_emit.name_of_var s
 
   | Name (_, s, args, None, None) ->
@@ -138,6 +139,7 @@ let rec make_reader ?type_annot p (x : Oj_mapping.t) : Indent.t list =
   | Int _
   | Float _
   | String _
+  | Abstract _
   | Name _
   | External _
   | Tvar _ -> [ Indent.Line (get_reader_name p x) ]
@@ -254,7 +256,7 @@ let rec make_reader ?type_annot p (x : Oj_mapping.t) : Indent.t list =
       ; Block (make_reader p x)
       ; Line ")"
       ]
-  | _ -> failwith "TODO: make reader"
+  | r -> failwith "TODO: make reader 3"
 
 and make_record_reader ?type_annot
     (p : param)
@@ -375,6 +377,8 @@ let rec get_writer_name
         | Int -> "float"
       )
 
+  | Abstract (_, Abstract, Abstract) -> "Atdgen_runtime.jsont_of_json"
+
   | String (_, String, String) -> encoder_ident "string"
 
   | Tvar (_, s) -> "write_" ^ (Ox_emit.name_of_var s)
@@ -420,6 +424,7 @@ let rec make_writer ?type_annot p (x : Oj_mapping.t) : Indent.t list =
   | Bool _
   | Int _
   | Float _
+  | Abstract _
   | String _
   | Name _
   | External _
