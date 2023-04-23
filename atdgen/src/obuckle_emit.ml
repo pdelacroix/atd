@@ -71,8 +71,12 @@ let make_ocaml_bs_intf ~with_create buf deref defs =
     let write_params = params encoder_t in
     bprintf buf "val read_%s : %s %s\n\n"
       s read_params (decoder_t full_name);
+    bprintf buf "val %s_of_string : %s string -> %s\n\n"
+      s read_params full_name;
     bprintf buf "val write_%s : %s %s\n\n"
       s write_params (encoder_t full_name);
+    bprintf buf "val string_of_%s : %s %s -> string\n\n"
+      s write_params full_name;
     Ox_emit.maybe_write_creator_intf ~with_create deref buf x
   )
 
@@ -325,12 +329,18 @@ let get_left_reader_name p name param =
   let args = List.map (fun s -> Mapping.Tvar (Atd.Ast.dummy_loc, s)) param in
   get_reader_name p (Mapping.Name (Atd.Ast.dummy_loc, name, args, None, None))
 
-let make_ocaml_bs_reader p ~original_types is_rec let1 _let2
+let get_left_of_string_name p name param =
+  let name_f s = s ^ "_of_string" in
+  let args = List.map (fun s -> Mapping.Tvar (Atd.Ast.dummy_loc, s)) param in
+  get_reader_name ~name_f p (Mapping.Name (Atd.Ast.dummy_loc, name, args, None, None))
+
+let make_ocaml_bs_reader p ~original_types is_rec let1 let2
     (def : (_, _) Mapping.def) =
   let x = Option.value_exn def.def_value in
   let name = def.def_name in
   let param = def.def_param in
   let read = get_left_reader_name p name param in
+  let of_string = get_left_of_string_name p name param in
   let type_annot =
     if Ox_emit.needs_type_annot x then (
       Some (Ox_emit.get_type_constraint ~original_types def)
@@ -348,6 +358,10 @@ let make_ocaml_bs_reader p ~original_types is_rec let1 _let2
     Line (sprintf "%s %s%s = (" let1 read extra_param);
     Block (List.map Indent.strip reader_expr);
     Line (sprintf ")%s" extra_args);
+    Line (sprintf "%s %s s =" let2 of_string);
+    Block [
+      Line (sprintf "%s (%s) (Js.Json.parseExn s)" (decoder_ident "decode") read);
+    ]
   ]
 
 let rec get_writer_name
@@ -417,6 +431,11 @@ let write_with_adapter adapter writer =
 let get_left_writer_name p name param =
   let args = List.map (fun s -> Mapping.Tvar (Atd.Ast.dummy_loc, s)) param in
   get_writer_name p (Name (Atd.Ast.dummy_loc, name, args, None, None))
+
+let get_left_to_string_name p name param =
+  let name_f s = "string_of_" ^ s in
+  let args = List.map (fun s -> Mapping.Tvar (Atd.Ast.dummy_loc, s)) param in
+  get_writer_name ~name_f p (Mapping.Name (Atd.Ast.dummy_loc, name, args, None, None))
 
 let rec make_writer ?type_annot p (x : Oj_mapping.t) : Indent.t list =
   match x with
@@ -598,7 +617,7 @@ and make_sum_writer ?type_annot (p : param)
   ; Block cases
   ; Line ")"]
 
-let make_ocaml_bs_writer p ~original_types is_rec let1 _let2
+let make_ocaml_bs_writer p ~original_types is_rec let1 let2
     (def : (_, _) Mapping.def) =
   let x = Option.value_exn def.def_value in
   let name = def.def_name in
@@ -611,6 +630,7 @@ let make_ocaml_bs_writer p ~original_types is_rec let1 _let2
   in
   let param = def.def_param in
   let write = get_left_writer_name p name param in
+  let to_string = get_left_to_string_name p name param in
   let writer_expr = make_writer ?type_annot p x in
   let eta_expand = is_rec && not (Ox_emit.is_lambda writer_expr) in
   let extra_param, extra_args =
@@ -621,6 +641,10 @@ let make_ocaml_bs_writer p ~original_types is_rec let1 _let2
     Line (sprintf "%s %s%s = (" let1 write extra_param);
     Block (List.map Indent.strip writer_expr);
     Line (sprintf ")%s" extra_args);
+    Line (sprintf "%s %s x =" let2 to_string);
+    Block [
+      Line (sprintf "%s (%s) x |> Js.Json.stringify" (encoder_ident "encode") write);
+    ]
   ]
 
 let make_ocaml_bs_impl
